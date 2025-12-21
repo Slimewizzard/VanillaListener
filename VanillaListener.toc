@@ -1,0 +1,7 @@
+## Interface: 11200
+## Title: VanillaListener
+## Notes: Tracks chat messages from specific players.
+## Author: Slimewizzard
+## Version: 1.0
+## SavedVariables: VanillaListenerDB
+VanillaListener.lua
