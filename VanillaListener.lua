@@ -3,7 +3,7 @@ VanillaListener = {}
 
 -- Constants
 local MAX_MESSAGES = 20
-local MAX_ALL_MESSAGES = 50 -- Global limit for "All Tracked"
+local MAX_ALL_MESSAGES = 30 -- Limit for "All" view to prevent glitches
 local DEFAULT_FONT_SIZE = 12
 
 -- Variables
@@ -209,7 +209,10 @@ detailContent:SetHeight(230)
 detailScroll:SetScrollChild(detailContent)
 
 local detailText = detailContent:CreateFontString("VanillaListenerDetailText", "ARTWORK", "GameFontHighlightSmall")
--- Switched to BOTTOMLEFT anchor as requested/optimal for chat logs
+-- Switched to TOPLEFT to be consistent with normal text flow on resize? 
+-- No, user wants BOTTOM anchoring like chat.
+-- To fix jumping, we MUST ensure the container height is STABLE.
+-- If we use BOTTOMLEFT, the text grows up.
 detailText:SetPoint("BOTTOMLEFT", detailContent, "BOTTOMLEFT", 0, 0)
 detailText:SetWidth(350)
 detailText:SetJustifyH("LEFT")
@@ -263,24 +266,14 @@ function VanillaListener:OnEvent()
 end
 
 function VanillaListener:UpdateFontSize()
-    local fontPath, _, flags = detailText:GetFont()
-    -- Ensure we have a valid font path, default if nil
-    if not fontPath then fontPath = "Fonts\\FRIZQT__.TTF" end 
-    detailText:SetFont(fontPath, VanillaListenerDB.fontSize, flags)
-    
-    -- Also update detail content width to match scroll width (in case font size changed wrapping)
-    if detailWindow then
-         local width = detailWindow:GetWidth() - 50
-         detailText:SetWidth(width)
-         detailContent:SetWidth(width)
-         -- Re-calc height
-         VanillaListener:UpdateDetailView()
-    end
+    local fontPath = "Fonts\\FRIZQT__.TTF"
+    detailText:SetFont(fontPath, VanillaListenerDB.fontSize)
+    -- Recalculate layout
+    if selectedPlayer then VanillaListener:UpdateDetailView() end
 end
 
 function VanillaListener:HandleMessage(event, text, sender)
     -- Check if sender is in our list
-    -- Try direct match first
     local isTracked = VanillaListenerDB.players[sender]
     
     if isTracked then
@@ -301,7 +294,6 @@ function VanillaListener:HandleMessage(event, text, sender)
         end
         
         -- Auto-Update Logic:
-        -- Update if we are viewing *ALL* OR if we are viewing this specific player
         if detailWindow:IsVisible() then
             if selectedPlayer == "*ALL*" or selectedPlayer == sender then
                 VanillaListener:UpdateDetailView()
@@ -420,9 +412,14 @@ function VanillaListener:UpdatePlayerList()
 end
 
 function VanillaListener:UpdateDetailView()
+    -- Store current vertical scroll position
+    local currentScroll = detailScroll:GetVerticalScroll()
+    local maxScroll = detailScroll:GetVerticalScrollRange()
+    local wasAtBottom = (currentScroll >= (maxScroll - 5))
+    
     if not selectedPlayer then 
         detailTitle:SetText("Message History")
-        detailText:SetText("")
+        detailContent:SetHeight(200) 
         return 
     end
     
@@ -430,18 +427,15 @@ function VanillaListener:UpdateDetailView()
     
     if selectedPlayer == "*ALL*" then
         detailTitle:SetText("History: All Tracked")
-        -- Read directly from dedicated list
         if VanillaListenerDB.allMessages then
             displayMessages = VanillaListenerDB.allMessages
         end
-        -- No need to sort, it's already chronological from HandleMessage
     elseif VanillaListenerDB.players[selectedPlayer] then
         detailTitle:SetText("History: " .. selectedPlayer)
         displayMessages = VanillaListenerDB.players[selectedPlayer].messages
     else
-        -- Selected player might have been removed
         detailTitle:SetText("Message History")
-        detailText:SetText("")
+        detailContent:SetHeight(200) 
         return
     end
     
@@ -455,42 +449,30 @@ function VanillaListener:UpdateDetailView()
         local prefix = ""
         if selectedPlayer == "*ALL*" and msg.sender then
              prefix = "|cffeda55f[" .. msg.sender .. "]|r "
-             -- If message is emote and starts with Sender, we might want to handle it, but standard emote format usually fine
         end
-        
         fullText = fullText .. "|cffaeaeae[" .. timeStr .. "]|r " .. prefix .. color .. msg.text .. "|r\n"
     end
     
     detailText:SetText(fullText)
     
-    -- Ensure width is correct before calculating height
-    if detailWindow then
-        local width = detailWindow:GetWidth() - 50
-        detailText:SetWidth(width)
-        detailContent:SetWidth(width)
-    end
-    
-    -- Resize content frame based on text height and scroll frame compatibility
-    -- We need to ensure text wraps correctly by updating width first (handled in Resize or Load)
-    
+    -- Calculate height
     local stringHeight = detailText:GetHeight()
-    local scrollHeight = detailScroll:GetHeight()
+    local frameHeight = detailScroll:GetHeight()
     
-    -- Ensure content frame is at least as tall as the scroll view
-    -- This forces the bottom-anchored text to sit at the bottom of the visual window
-    if stringHeight < scrollHeight then stringHeight = scrollHeight end
-    
-    detailContent:SetHeight(stringHeight)
-    
-    -- Force update and scroll to bottom (newest messages)
-    if detailScroll.UpdateScrollChildRect then
-        detailScroll:UpdateScrollChildRect()
+    -- Ensuring content is AT LEAST the size of the viewable area is KEY for bottom alignment
+    if stringHeight < frameHeight then 
+        stringHeight = frameHeight 
     end
-    -- Set safe delay or just set it? In 1.12 SetVerticalScroll usually works if range is valid.
-    -- We'll just set it to the theoretical max if GetVerticalScrollRange isn't ready yet.
-    local maxScroll = detailContent:GetHeight() - detailScroll:GetHeight()
-    if maxScroll < 0 then maxScroll = 0 end
-    detailScroll:SetVerticalScroll(maxScroll)
+    
+    -- Add a little padding for readabilty
+    detailContent:SetHeight(stringHeight + 20)
+    detailScroll:UpdateScrollChildRect()
+    
+    -- Auto-scroll logic (Sticky Bottom)
+    local newMax = detailScroll:GetVerticalScrollRange()
+    if wasAtBottom then
+        detailScroll:SetVerticalScroll(newMax)
+    end
 end
 
 VanillaListener:OnLoad()
