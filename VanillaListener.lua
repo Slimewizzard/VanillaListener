@@ -125,6 +125,26 @@ incButton:SetScript("OnClick", function()
     end
 end)
 
+-- Auto Update Checkbox
+local autoUpdateCheck = CreateFrame("CheckButton", "VanillaListenerAutoUpdateCheck", mainFrame, "UICheckButtonTemplate")
+autoUpdateCheck:SetWidth(20)
+autoUpdateCheck:SetHeight(20)
+autoUpdateCheck:SetPoint("LEFT", incButton, "RIGHT", 15, 0)
+
+local autoUpdateText = autoUpdateCheck:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+autoUpdateText:SetPoint("LEFT", autoUpdateCheck, "RIGHT", 0, 1)
+autoUpdateText:SetText("Live")
+
+autoUpdateCheck:SetScript("OnClick", function()
+    if this:GetChecked() then
+        VanillaListenerDB.autoUpdate = true
+        -- Determine if we should update view immediately
+        if selectedPlayer then VanillaListener:UpdateDetailView() end
+    else
+        VanillaListenerDB.autoUpdate = false
+    end
+end)
+
 -- Player List Frame (ScrollFrame container)
 local listFrame = CreateFrame("ScrollFrame", "VanillaListenerListFrame", mainFrame, "UIPanelScrollFrameTemplate")
 listFrame:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 20, -80)
@@ -250,6 +270,7 @@ function VanillaListener:OnEvent()
         if not VanillaListenerDB.players then VanillaListenerDB.players = {} end
         if not VanillaListenerDB.allMessages then VanillaListenerDB.allMessages = {} end -- Initialize dedicated All list
         if not VanillaListenerDB.fontSize then VanillaListenerDB.fontSize = DEFAULT_FONT_SIZE end
+        if VanillaListenerDB.autoUpdate == nil then VanillaListenerDB.autoUpdate = true end -- Default True
         
         -- Restore sizes
         if VanillaListenerDB.mainWidth then mainFrame:SetWidth(VanillaListenerDB.mainWidth) end
@@ -257,6 +278,7 @@ function VanillaListener:OnEvent()
         if VanillaListenerDB.detailWidth then detailWindow:SetWidth(VanillaListenerDB.detailWidth) end
         if VanillaListenerDB.detailHeight then detailWindow:SetHeight(VanillaListenerDB.detailHeight) end
         
+        getglobal("VanillaListenerAutoUpdateCheck"):SetChecked(VanillaListenerDB.autoUpdate) -- Restore checkbox state
         VanillaListener:UpdatePlayerList()
         VanillaListener:UpdateFontSize()
         
@@ -294,7 +316,8 @@ function VanillaListener:HandleMessage(event, text, sender)
         end
         
         -- Auto-Update Logic:
-        if detailWindow:IsVisible() then
+        -- Only update if window visible AND Auto-Update is enabled
+        if detailWindow:IsVisible() and VanillaListenerDB.autoUpdate then
             if selectedPlayer == "*ALL*" or selectedPlayer == sender then
                 VanillaListener:UpdateDetailView()
             end
@@ -358,7 +381,7 @@ function VanillaListener:UpdatePlayerList()
     
     allBtn:SetScript("OnClick", function()
         selectedPlayer = "*ALL*"
-        VanillaListener:UpdateDetailView()
+        VanillaListener:UpdateDetailView(true)
         if not detailWindow:IsVisible() then detailWindow:Show() end
     end)
     
@@ -389,7 +412,7 @@ function VanillaListener:UpdatePlayerList()
         
         btn:SetScript("OnClick", function()
             selectedPlayer = playerName
-            VanillaListener:UpdateDetailView()
+            VanillaListener:UpdateDetailView(true)
             if not detailWindow:IsVisible() then detailWindow:Show() end
         end)
         
@@ -413,7 +436,7 @@ function VanillaListener:UpdatePlayerList()
     listContent:SetHeight(math.abs(yOffset))
 end
 
-function VanillaListener:UpdateDetailView()
+function VanillaListener:UpdateDetailView(forceBottom)
     -- Store current vertical scroll position
     local currentScroll = detailScroll:GetVerticalScroll()
     local maxScroll = detailScroll:GetVerticalScrollRange()
@@ -455,6 +478,7 @@ function VanillaListener:UpdateDetailView()
         fullText = fullText .. "|cffaeaeae[" .. timeStr .. "]|r " .. prefix .. color .. msg.text .. "|r\n"
     end
     
+    detailText:SetWidth(detailContent:GetWidth())
     detailText:SetText(fullText)
     
     -- Calculate height
@@ -470,11 +494,23 @@ function VanillaListener:UpdateDetailView()
     detailContent:SetHeight(stringHeight + 20)
     detailScroll:UpdateScrollChildRect()
     
-    -- Auto-scroll logic (Sticky Bottom)
-    local newMax = detailScroll:GetVerticalScrollRange()
-    if wasAtBottom then
-        detailScroll:SetVerticalScroll(newMax)
+    -- Auto-scroll logic (Sticky Bottom) WITH DELAY FIX
+    -- We set a flag to force the scroll update on the NEXT frame.
+    -- This allows the text to fully render/wrap so the height calculation is 100% accurate.
+    if wasAtBottom or forceBottom then
+        detailWindow.pendingScroll = true
     end
 end
+
+-- Add OnUpdate script to handle the delayed scroll
+detailWindow:SetScript("OnUpdate", function()
+    if this.pendingScroll then
+        -- Recalculate rect in case size changed during render
+        detailScroll:UpdateScrollChildRect() 
+        local newMax = detailScroll:GetVerticalScrollRange()
+        detailScroll:SetVerticalScroll(newMax)
+        this.pendingScroll = false -- Reset flag
+    end
+end)
 
 VanillaListener:OnLoad()
