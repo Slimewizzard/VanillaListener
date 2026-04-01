@@ -1,7 +1,22 @@
 ## Interface: 11200
 ## Title: VanillaListener
-## Notes: Tracks chat messages from specific players.
+## Notes: RP chat tracker — follow player conversations across SAY, EMOTE, PARTY, RAID and more.
 ## Author: Slimewizzard
-## Version: 1.0
+## Version: 2.0
 ## SavedVariables: VanillaListenerDB
-VanillaListener.lua
+
+## Libraries
+embeds.xml
+
+## UI Templates
+VanillaListener.xml
+
+## Source
+src\init.lua
+src\storage.lua
+src\chat.lua
+src\windows.lua
+src\playerlist.lua
+src\history.lua
+src\probe.lua
+src\snooper.lua
